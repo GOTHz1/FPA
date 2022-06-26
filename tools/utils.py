@@ -4,14 +4,22 @@ import math
 
 import torch
 from sklearn.preprocessing import normalize
-from multiprocessing import Process, Lock
-
-lock = Lock()
-candidate_xyzangle_results = []
-optXYZAngleResult = []
 
 
-def showimgFrompose(img, x, y, z, lanmark, name):
+def showimgFrompose(img, x, y, z, landmarks, name):
+    """
+    Show img form pose angle
+    notice:
+        pose angle not euler angle!
+    Parameters:
+        img - cv2.img
+        x - pitch
+        y - yaw
+        z - roll
+        landmarks = face point
+        name - show image name
+    """
+
     img2 = img.copy()
     Ry = np.array([[math.cos(y), 0, -math.sin(y)],
                    [0, 1, 0],
@@ -41,7 +49,7 @@ def showimgFrompose(img, x, y, z, lanmark, name):
 
     w2ip_matrix_NewTon = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype="float32")
 
-    imgSize = img2.shape  # 获取图像的高,宽,深度
+    imgSize = img2.shape
     faceNorm = 0.2 * imgSize[0] * normal_vector
     faceUp = 0.2 * imgSize[0] * up_vector
     faceTan = 0.2 * imgSize[0] * tan_vector
@@ -57,30 +65,38 @@ def showimgFrompose(img, x, y, z, lanmark, name):
     projTanEnd = (int(projTan[0] + imgSize[0] / 2),
                   int(projTan[1] + imgSize[1] / 2))
 
-    # 绘制鼻下点
     image_fixedpt = (int(imgSize[0] / 2), int(imgSize[1] / 2))
-    cv2.line(img2, image_fixedpt, projTanEnd, (0, 255, 0), 2)  # Tangent向量为绿色
-    cv2.line(img2, image_fixedpt, projUpEnd, (255, 0, 0), 2)  # Up向量为蓝色
-    cv2.line(img2, image_fixedpt, projNormEnd, (0, 0, 255), 2)  # 面法线为红色
-
+    # cv2.line(img2, image_fixedpt, projTanEnd, (0, 255, 0), 2)
+    # cv2.line(img2, image_fixedpt, projUpEnd, (255, 0, 0), 2)
+    # cv2.line(img2, image_fixedpt, projNormEnd, (0, 0, 255), 2)
+    for i in landmarks:
+         cv2.circle(img2,np.int16(i),1,[255,0,0])
     cv2.imshow(name, cv2.resize(img2, [500, 500]))
 
 
-def showimgFromeuler(img, x, y, z, lanmark, name):
+def showimgFromeuler(img, x, y, z, landmarks, name):
+    """
+    Show img form euler angle
+    Parameters:
+        img - cv2.img
+        x - pitch
+        y - yaw
+        z - roll
+        landmarks = face point
+        name - show image name
+    """
     img3 = img.copy()
     y = -y
     faceNorm, faceUp = get_normal_up_from_euler_angles(x, y, z, 'xyz')
     w2ip_matrix_NewTon = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype="float32")
     faceTan_newton = normalize(np.cross(faceUp, faceNorm, axis=0),
                                axis=0)
-    print("faceN:", faceNorm)
-    print("faceU:", faceUp)
-    print("faceTan:", faceTan_newton)
 
-    imgSize = img3.shape  # 获取图像的高,宽,深度
-    faceNorm_newton = 0.2 * imgSize[0] * faceNorm
-    faceUp_newton = 0.2 * imgSize[0] * faceUp
-    faceTan_newton = 0.2 * imgSize[0] * faceTan_newton
+
+    imgSize = img3.shape
+    faceNorm_newton = 0.5 * imgSize[0] * faceNorm
+    faceUp_newton = 0.5 * imgSize[0] * faceUp
+    faceTan_newton = 0.5 * imgSize[0] * faceTan_newton
 
     projNorm = w2ip_matrix_NewTon.dot(faceNorm_newton)
     projUp = w2ip_matrix_NewTon.dot(faceUp_newton)
@@ -93,14 +109,18 @@ def showimgFromeuler(img, x, y, z, lanmark, name):
                   int(projTan[1] + imgSize[1] / 2))
 
     image_fixedpt = (int(imgSize[0] / 2), int(imgSize[1] / 2))
-    cv2.line(img3, image_fixedpt, projTanEnd, (0, 255, 0), 2)  # Tangent向量为绿色
-    cv2.line(img3, image_fixedpt, projUpEnd, (255, 0, 0), 2)  # Up向量为蓝色
-    cv2.line(img3, image_fixedpt, projNormEnd, (0, 0, 255), 2)  # 面法线为红色
-    # Display image
-    #
-    # for i in lanmark:
-    #     cv2.circle(img3,np.int16(i),1,[255,0,0])
-    cv2.imshow(name, cv2.resize(img3, [500, 500]))
+    # cv2.line(img3, image_fixedpt, projTanEnd, (0, 255, 0), 2)  # Tangent向量为绿色
+    # cv2.line(img3, image_fixedpt, projUpEnd, (255, 0, 0), 2)  # Up向量为蓝色
+    # cv2.line(img3, image_fixedpt, projNormEnd, (0, 0, 255), 2)  # 面法线为红色
+
+
+    # for i in landmarks:
+    #      cv2.circle(img3,np.int16(i),1,[255,0,0],thickness=-1)
+
+    cv2.imshow(name, img3)
+
+    if cv2.waitKey(3):
+        cv2.imwrite(name+".png",img3)
 
 
 def get_R(x, y, z):
@@ -157,15 +177,11 @@ def cross_product(u, v):
 def compute_rotation_matrix_from_ortho6d(poses, use_gpu=True):
     x_raw = poses[:, 0:3]  # batch*3
     y_raw = poses[:, 3:6]  # batch*3
-    # print("pose:",poses)
+
     x = normalize_vector(x_raw, use_gpu)  # batch*3
-    # print("x:",x);
     z = cross_product(x, y_raw)  # batch*3
-    # print("z:", z);
     z = normalize_vector(z, use_gpu)  # batch*3
-    # print("z:", z);
     y = cross_product(z, x)  # batch*3
-    # print("y:", y);
 
     x = x.view(-1, 3, 1)
     y = y.view(-1, 3, 1)
@@ -177,7 +193,6 @@ def compute_rotation_matrix_from_ortho6d(poses, use_gpu=True):
 def compute_euler_angles_from_rotation_matrices(rotation_matrices, use_gpu=True):
     batch = rotation_matrices.shape[0]
     R = rotation_matrices
-    # print(R)
     sy = torch.sqrt(R[:, 0, 0] * R[:, 0, 0] + R[:, 1, 0] * R[:, 1, 0])
     singular = sy < 1e-6
     singular = singular.float()
@@ -201,16 +216,13 @@ def compute_euler_angles_from_rotation_matrices(rotation_matrices, use_gpu=True)
     return out_euler
 
 
-def get_normal_up_from_euler_angles(xAngle, yAngle, zAngle, useNewTon, order='xyz'):
-    '''从按绕Y->X->Z轴旋转得到的偏转角计算面法线向量
-       xAngle, yAngle, zAngle单位：弧度
-       返回值：单位向量
-    '''
-    sx = math.sin(xAngle);
+def get_normal_up_from_euler_angles(xAngle, yAngle, zAngle, order='xyz'):
+
+    sx = math.sin(xAngle)
     cx = math.cos(xAngle)
-    sy = math.sin(yAngle);
+    sy = math.sin(yAngle)
     cy = math.cos(yAngle)
-    sz = math.sin(zAngle);
+    sz = math.sin(zAngle)
     cz = math.cos(zAngle)
 
     if order == 'xyz':
@@ -218,23 +230,7 @@ def get_normal_up_from_euler_angles(xAngle, yAngle, zAngle, useNewTon, order='xy
                                                  [cz * sx + sy + cx * sz, cx * cz - sx * sy * sz, -cy * sx],
                                                  [-cx * cz * sy + sx * sz, cz * sx + cx * sy * sz, cx * cy]
                                                  ], dtype="float32")
-    elif order == 'yxz':
-        euler_angles_rotation_matrix = np.array([[cy * cz + sx * sy * sz, cz * sx * sy - cy * sz, cx * sy],
-                                                 [cx * sz, cx * cz, -sx],
-                                                 [-cz * sy + cy * sx * sz, cy * cz * sx + sy * sz, cx * cy]
-                                                 ], dtype="float32")
 
-    elif order == 'zxy':
-        euler_angles_rotation_matrix = np.array([[cy * cz - sx * sy * sz, -cx * sz, cz * sy + cy * sx * sz],
-                                                 [cz * sx * sy + cy * sz, cx * cz, -cy * cz * sx + sy * sz],
-                                                 [-cx * sy, sx, cx * cy]
-                                                 ], dtype="float32")
-    elif order == 'zyx':
-        euler_angles_rotation_matrix = np.array([[cy * cz, cz * sx * sy - cx * sz, cx * cz * sy + sx * sz],
-                                                 [cy * sz, cx * cz + sx * sy * sz, -cz * sx + cx * sy * sz],
-                                                 [-sy, cy * sx, cx * cy]
-                                                 ], dtype="float32")
-    # 世界坐标系中的人脸法线和Up切线单位向量
     faceNormal = np.array([[0.0], [0.0], [1.0]], dtype="float32")
     faceUp = np.array([[0.0], [1.0], [0.0]], dtype="float32")
     newNormal = euler_angles_rotation_matrix.dot(faceNormal)
@@ -244,18 +240,13 @@ def get_normal_up_from_euler_angles(xAngle, yAngle, zAngle, useNewTon, order='xy
 
 
 def get_pose_angles_from_normal_up(normal, up):
-    '''
-    从位于OpenGL坐标系中的人脸的法向量和up切向量计算人脸的姿态角(按绕Y——X——Z顺序得到的欧拉角)
-    返回值：OpenGL坐标系中的pitch，yaw，roll，按Y->X->Z顺序旋转，单位：弧度
-    '''
-    up = normalize(up, axis=0)  # up需要是列向量或矩阵
+    up = normalize(up, axis=0)
     normal = normalize(normal, axis=0)
     pitch_angle = -math.asin(normal[1])
     yaw_angle = math.asin(normal[0] / math.sqrt(normal[0] * normal[0] + normal[2] * normal[2]))
-    # 计算pitch和yaw角形成的旋转矩阵(按y=yaw_angle——>x=pithc_angle——>z=roll=0的旋转顺序得到)
-    cx = math.cos(pitch_angle);
+    cx = math.cos(pitch_angle)
     sx = math.sin(pitch_angle)
-    cy = math.cos(yaw_angle);
+    cy = math.cos(yaw_angle)
     sy = math.sin(yaw_angle)
     euler_angles_Ryxz_matrix = np.array([[cy, sx * sy, cx * sy],
                                          [0.0, cx, -sx],

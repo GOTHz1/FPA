@@ -1,6 +1,4 @@
 import argparse
-import math
-import json
 import numpy as np
 import cv2
 
@@ -18,11 +16,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def main(args):
     detector = MTCNN()
     checkpoint = torch.load(args.model_path, map_location=device)
-    angle_backbone = AngleInference(0.25, 112).to(device)
+    angle_backbone = AngleInference(1, 112).to(device)
     angle_backbone.load_state_dict(checkpoint['anglenet'])
     angle_backbone.eval()
     angle_backbone = angle_backbone.to(device)
-    landmark_net = LandmarkNet(0.25, 112, 32).to(device)
+    landmark_net = LandmarkNet(1, 112, 32).to(device)
     landmark_net.load_state_dict(checkpoint['landmarknet'])
     landmark_net.eval()
 
@@ -65,10 +63,9 @@ def main(args):
 
             mat6, feature = angle_backbone(input)
             landmarks = landmark_net(feature)
-            mat = utils.compute_rotation_matrix_from_ortho6d(mat6);
+            mat = utils.compute_rotation_matrix_from_ortho6d(mat6)
             euler_angle = utils.compute_euler_angles_from_rotation_matrices(mat)
             landmark_pre = landmarks.cpu().detach().numpy().reshape(-1, 2)
-            # print("l:",landmark_pre)
             landmark_pre[:, 0] = landmark_pre[:, 0] * w1 + x1
             landmark_pre[:, 1] = landmark_pre[:, 1] * h1 + y1
 
@@ -80,14 +77,14 @@ def main(args):
 
             cv2.rectangle(img, [x1, y1], [x1 + w1, y1 + h1], [255, 0, 0])
             utils.showimgFromeuler(img, x, -y, z, landmark_pre, 'euler')
-        if cv2.waitKey(0):
+        if cv2.waitKey(0)==27:
             break
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Testing')
     parser.add_argument('--model_path',
-                        default="./checkpoint/WLP5_8/snapshot/checkpoint_epoch_111.pth.tar",
+                        default="../checkpoint/FPA/snapshot/checkpoint.pth.tar",
                         type=str)
     args = parser.parse_args()
     return args
